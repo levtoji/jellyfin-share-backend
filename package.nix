@@ -12,16 +12,11 @@ let
   frontend = buildNpmPackage {
     pname = "jfshare-web";
     inherit version;
-    src = ./.;
+    src = ./web;
 
-    npmDepsHash = "sha256-Q4aaIMHj89NXoHR6l4Kczdxb1tHLzT3W+Q7jwA12WyU=";
+    npmDepsHash = "sha256-QY5p6XB4XQPbIPwQG+YnCoLf8UyQvxAA89PZsad3yXY=";
 
     nativeBuildInputs = [ jq ];
-
-    postUnpack = ''
-      cd $sourceRoot/web
-      export sourceRoot=.
-    '';
 
     buildPhase = ''
       runHook preBuild

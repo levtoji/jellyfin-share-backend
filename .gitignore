@@ -33,3 +33,10 @@ coverage.html
 
 server/
 vendor/
+server/
+web/test-results/
+web/node_modules/
+web/dist/
+result
+flake.lock
+server/
