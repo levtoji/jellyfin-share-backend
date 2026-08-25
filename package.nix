@@ -14,11 +14,14 @@ let
     inherit version;
     src = ./.;
 
-    sourceRoot = "source/web";
-
     npmDepsHash = "sha256-Q4aaIMHj89NXoHR6l4Kczdxb1tHLzT3W+Q7jwA12WyU=";
 
     nativeBuildInputs = [ jq ];
+
+    postUnpack = ''
+      cd $sourceRoot/web
+      export sourceRoot=.
+    '';
 
     buildPhase = ''
       runHook preBuild
