@@ -47,6 +47,8 @@ let
     subPackages = [ "cmd/server" ];
 
     nativeBuildInputs = [ jq ];
+
+    doCheck = true;
   };
 
 in
