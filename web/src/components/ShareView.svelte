@@ -25,7 +25,7 @@
   let selectedSubtitleIndex = null;
   let copied = false;
 
-  function buildDirectLink() {
+  $: directLinkUrl = (() => {
     let p = [];
     if (selectedAudioIndex != null) p.push('AudioStreamIndex=' + selectedAudioIndex);
     if (selectedSubtitleIndex != null) {
@@ -33,9 +33,7 @@
       p.push('SubtitleMethod=Encode');
     }
     return window.location.origin + '/direct/' + token + (p.length ? '?' + p.join('&') : '');
-  }
-
-  $: directLinkUrl = buildDirectLink();
+  })();
 
   // Episode list for Season/Series
   let episodes = [];
