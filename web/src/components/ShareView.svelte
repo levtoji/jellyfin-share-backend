@@ -21,6 +21,21 @@
   let imageLoaded = !shareInfo.posterUrl;
   let showFullCast = false;
   let currentPlayingTitle = '';
+  let selectedAudioIndex = null;
+  let selectedSubtitleIndex = null;
+  let copied = false;
+
+  function buildDirectLink() {
+    let p = [];
+    if (selectedAudioIndex != null) p.push('AudioStreamIndex=' + selectedAudioIndex);
+    if (selectedSubtitleIndex != null) {
+      p.push('SubtitleStreamIndex=' + selectedSubtitleIndex);
+      p.push('SubtitleMethod=Encode');
+    }
+    return window.location.origin + '/direct/' + token + (p.length ? '?' + p.join('&') : '');
+  }
+
+  $: directLinkUrl = buildDirectLink();
 
   // Episode list for Season/Series
   let episodes = [];
@@ -462,6 +477,53 @@
           {/if}
         </div>
       </div>
+
+      {#if shareInfo.audioTracks && shareInfo.audioTracks.length > 0}
+        <div class="direct-link-section">
+          <div class="direct-link-header">
+            <svg viewBox="0 0 24 24" fill="currentColor">
+              <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z"/>
+            </svg>
+            <span>Direct Link</span>
+          </div>
+          <div class="language-selector">
+            <label for="audio-select">Audio:</label>
+            <select id="audio-select" bind:value={selectedAudioIndex}>
+              <option value={null}>Default</option>
+              {#each shareInfo.audioTracks as track}
+                <option value={track.index}>
+                  {track.displayTitle || `${track.language || 'Unknown'} (${track.codec})`}
+                </option>
+              {/each}
+            </select>
+          </div>
+          {#if shareInfo.subtitleTracks && shareInfo.subtitleTracks.length > 0}
+            <div class="language-selector">
+              <label for="subtitle-select">Subtitles:</label>
+              <select id="subtitle-select" bind:value={selectedSubtitleIndex}>
+                <option value={null}>None</option>
+                {#each shareInfo.subtitleTracks as track}
+                  <option value={track.index}>
+                    {track.displayTitle || `${track.language || 'Unknown'} (${track.codec})`}{track.isForced ? ' [Forced]' : ''}
+                  </option>
+                {/each}
+              </select>
+            </div>
+          {/if}
+          <div class="direct-link-input-group">
+            <input type="text" readonly value={directLinkUrl} class="direct-link-input" on:click={(e) => e.target.select()} />
+            <button class="copy-btn" on:click={() => { navigator.clipboard.writeText(directLinkUrl); copied = true; setTimeout(() => copied = false, 2000); }}>
+              {#if copied}
+                <span class="copied-text">Copied!</span>
+              {:else}
+                <svg viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
+                </svg>
+              {/if}
+            </button>
+          </div>
+        </div>
+      {/if}
 
       <div class="footer">
         <span>Shared via Jellyfin Share</span>
@@ -1142,6 +1204,122 @@
     transform: scale(1.1);
   }
 
+  .direct-link-section {
+    margin-top: 1.5rem;
+    padding: 1.25rem;
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(0, 212, 255, 0.2);
+    border-radius: 12px;
+    max-width: 100%;
+  }
+
+  .direct-link-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.9rem;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+  }
+
+  .direct-link-header svg {
+    width: 18px;
+    height: 18px;
+    color: #00d4ff;
+  }
+
+  .language-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .language-selector label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.85rem;
+    white-space: nowrap;
+  }
+
+  .language-selector select {
+    flex: 1;
+    max-width: 400px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    color: #fff;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .language-selector select:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+  }
+
+  .language-selector select option {
+    background: #1a1a2e;
+    color: #fff;
+  }
+
+  .direct-link-input-group {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .direct-link-input {
+    flex: 1;
+    padding: 0.65rem 0.85rem;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.4);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 0.8rem;
+    font-family: monospace;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+
+  .direct-link-input:focus {
+    outline: none;
+    border-color: rgba(0, 212, 255, 0.5);
+  }
+
+  .copy-btn {
+    padding: 0.65rem 1rem;
+    border: none;
+    border-radius: 8px;
+    background: rgba(0, 212, 255, 0.15);
+    border: 1px solid rgba(0, 212, 255, 0.3);
+    color: #00d4ff;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    min-width: 44px;
+  }
+
+  .copy-btn:hover {
+    background: rgba(0, 212, 255, 0.25);
+    border-color: rgba(0, 212, 255, 0.5);
+  }
+
+  .copy-btn svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .copied-text {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #00ff88;
+  }
+
   .footer {
     text-align: center;
     padding: 2rem;
@@ -1212,6 +1390,14 @@
 
     .episode-card:hover {
       transform: none;
+    }
+
+    .direct-link-input-group {
+      flex-direction: column;
+    }
+
+    .language-selector select {
+      max-width: unset;
     }
   }
 
