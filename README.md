@@ -1,245 +1,113 @@
-# Jellyfin Share
+# Jellyfin Share Backend (Enhanced)
 
-A secure, self-hosted solution for creating temporary, shareable links to your Jellyfin media content. Share movies and TV episodes with friends and family without giving them access to your Jellyfin server.
+Forked from [monxas/jellyfin-share-backend](https://github.com/monxas/jellyfin-share-backend) with the following additions:
 
 ## Features
 
-- **Temporary Share Links** - Create time-limited links that automatically expire
-- **Password Protection** - Optionally protect shares with a password
-- **Play Limits** - Set maximum total plays and concurrent viewer limits
-- **No Account Required** - Recipients don't need a Jellyfin account
-- **Secure Streaming** - Media is proxied through the backend; Jellyfin is never exposed
-- **Rich Metadata** - Displays poster, backdrop, ratings, cast, and more
-- **Admin Dashboard** - Web UI to manage and monitor all shares
-- **Session Tracking** - Monitor active viewers and playback sessions
-- **HLS Streaming** - Adaptive bitrate streaming for optimal playback
+### Direct Playback Links (`/direct/{token}`)
 
-## Architecture
+Generate a single URL that starts playback immediately — no web UI needed. Paste into VRChat, VLC, or any HLS-compatible player.
 
 ```
-┌─────────────┐     ┌─────────────────┐     ┌─────────────┐
-│   Viewer    │────▶│  JF Share API   │────▶│  Jellyfin   │
-│  (Browser)  │◀────│   (Go + Svelte) │◀────│   Server    │
-└─────────────┘     └─────────────────┘     └─────────────┘
-                            │
-                            ▼
-                    ┌─────────────┐
-                    │  PostgreSQL │
-                    └─────────────┘
+https://watch.example.com/direct/abc123
+?AudioStreamIndex=2
+&SubtitleStreamIndex=5
+&SubtitleMethod=Encode
 ```
 
-## Quick Start
+### Audio Track Selection
 
-### Prerequisites
+The share page displays all available audio tracks from the Jellyfin media source. Select a track and the direct link updates with `AudioStreamIndex=<index>`.
 
-- Docker and Docker Compose
-- Jellyfin server with API key
-- PostgreSQL (included in docker-compose)
+### Subtitle Burn-In
 
-### 1. Clone and Configure
+Select subtitles from the media's available subtitle tracks. When selected, the direct link includes `SubtitleMethod=Encode` which tells Jellyfin to hardcode the subtitles into the video stream (required for VRChat, which cannot render separate subtitle streams).
 
-```bash
-git clone https://github.com/monxas/jellyfin-share-backend.git
-cd jellyfin-share-backend
+### Transcoding Defaults
 
-# Copy example environment file
-cp .env.example .env
-```
+Pre-configured for quality playback:
 
-### 2. Edit `.env`
+| Parameter | Value |
+|---|---|
+| Video Codec | H.264 |
+| Video Bitrate | 4 Mbps |
+| Max Resolution | 1080p |
+| Allow Stream Copy (video) | No (always transcode) |
+| Tone Mapping | Enabled |
+| Audio Codec | AAC (for HLS master) |
 
-```env
-# Your Jellyfin server URL
-JELLYFIN_URL=http://your-jellyfin-server:8096
+The HLS stream proxy removes `AudioCodec` from `.ts`/`.m4s` segment URLs to prevent FFmpeg decoding issues.
 
-# Jellyfin API key (Dashboard → API Keys → Create)
-JELLYFIN_API_KEY=your-jellyfin-api-key
+### Series Support
 
-# Backend API key for admin access (generate with: openssl rand -hex 32)
-BACKEND_API_KEY=your-secure-backend-key
+For Series shares, the backend automatically resolves the first episode's media streams (audio tracks, subtitles) and redirects playback to the correct episode.
 
-# Public URL where share links will be accessible
-PUBLIC_BASE_URL=https://share.yourdomain.com
+## NixOS Module
 
-# Database password
-POSTGRES_PASSWORD=your-secure-db-password
-```
-
-### 3. Start the Server
-
-```bash
-docker-compose up -d
-```
-
-The server will be available at `http://localhost:8097`
-
-### 4. Access Admin Dashboard
-
-Navigate to `http://localhost:8097/admin` and enter your `BACKEND_API_KEY`.
-
-## Configuration
-
-| Environment Variable | Description | Default |
-|---------------------|-------------|---------|
-| `JFSHARE_PORT` | Server port | `8097` |
-| `JFSHARE_JELLYFIN_BASE_URL` | Jellyfin server URL | Required |
-| `JFSHARE_JELLYFIN_API_KEY` | Jellyfin API key | Required |
-| `JFSHARE_BACKEND_API_KEY` | Admin API key | Required |
-| `JFSHARE_PUBLIC_BASE_URL` | Public URL for share links | Required |
-| `JFSHARE_DB_DSN` | PostgreSQL connection string | Required |
-| `JFSHARE_SESSION_HEARTBEAT_TIMEOUT_SECONDS` | Session timeout | `120` |
-| `JFSHARE_RATE_LIMIT_REQUESTS` | Rate limit requests | `100` |
-| `JFSHARE_RATE_LIMIT_WINDOW_SECONDS` | Rate limit window | `60` |
-
-## API Reference
-
-### Admin Endpoints
-
-All admin endpoints require the `X-Backend-Key` header with your API key.
-
-#### Create Share
-```http
-POST /api/admin/shares
-Content-Type: application/json
-X-Backend-Key: your-api-key
-
+```nix
 {
-  "jellyfinItemId": "abc123",
-  "jellyfinUserId": "user123",
-  "expiresInMinutes": 1440,
-  "password": "optional-password",
-  "maxTotalPlays": 5,
-  "maxConcurrentViewers": 2
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    jellyfin-share.url = "github:levtoji/jellyfin-share-backend";
+  };
+
+  outputs = { self, nixpkgs, jellyfin-share, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      specialArgs = { inherit jellyfin-share; };
+      modules = [
+        ({ ... }: {
+          imports = [ jellyfin-share.nixosModules.default ];
+
+          services.jellyfin-share = {
+            enable = true;
+            port = 8097;
+            databaseUrl = "postgres://watch:password@127.0.0.1:5432/watch?sslmode=disable";
+            jellyfinUrl = "http://127.0.0.1:8096";
+            jellyfinApiKey = "your-jellyfin-api-key";
+            backendApiKey = "your-backend-api-key";
+            publicBaseUrl = "https://watch.example.com";
+          };
+        })
+      ];
+    };
+  };
 }
 ```
 
-#### List Shares
-```http
-GET /api/admin/shares
-X-Backend-Key: your-api-key
-```
+### Module Options
 
-#### Get Share Details
-```http
-GET /api/admin/shares/{id}
-X-Backend-Key: your-api-key
-```
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `services.jellyfin-share.enable` | bool | `false` | Enable the service |
+| `services.jellyfin-share.user` | string | `jellyfin-share` | Service user |
+| `services.jellyfin-share.group` | string | `jellyfin-share` | Service group |
+| `services.jellyfin-share.port` | int | `8097` | HTTP listen port |
+| `services.jellyfin-share.databaseUrl` | string | — | PostgreSQL DSN |
+| `services.jellyfin-share.jellyfinUrl` | string | `http://127.0.0.1:8096` | Jellyfin base URL |
+| `services.jellyfin-share.jellyfinApiKey` | string | — | Jellyfin API key |
+| `services.jellyfin-share.backendApiKey` | string | — | Backend admin API key |
+| `services.jellyfin-share.publicBaseUrl` | string | — | Public URL for share links |
+| `services.jellyfin-share.logLevel` | enum | `info` | Log level |
+| `services.jellyfin-share.setupPostgresql` | bool | `true` | Auto-create DB + user |
+| `services.jellyfin-share.setupJellyfinPlugin` | bool | `true` | Install Jellyfin Share plugin |
 
-#### Revoke Share
-```http
-POST /api/admin/shares/{id}/revoke
-X-Backend-Key: your-api-key
-```
-
-#### Update Share
-```http
-PATCH /api/admin/shares/{id}
-Content-Type: application/json
-X-Backend-Key: your-api-key
-
-{
-  "maxTotalPlays": 10,
-  "extendMinutes": 1440
-}
-```
-
-### Public Endpoints
-
-#### Get Share Info
-```http
-GET /api/public/shares/{token}
-```
-
-#### Validate Password
-```http
-POST /api/public/shares/{token}/password
-Content-Type: application/json
-
-{
-  "password": "share-password"
-}
-```
-
-#### Start Playback
-```http
-POST /api/public/shares/{token}/play
-```
-
-#### Heartbeat (keep session alive)
-```http
-POST /api/public/sessions/{sessionId}/heartbeat
-Content-Type: application/json
-
-{
-  "positionSeconds": 120
-}
-```
-
-## Development
-
-### Prerequisites
-
-- Go 1.21+
-- Node.js 18+
-- Docker and Docker Compose
-
-### Setup
+## Standalone Package
 
 ```bash
-# Start development environment with hot reload
-docker-compose -f docker-compose.dev.yml up
-
-# Backend runs on http://localhost:8097
-# Vite dev server runs on http://localhost:5173
+nix build github:levtoji/jellyfin-share-backend#default
 ```
 
-### Project Structure
+## Upstream Tracking
 
-```
-.
-├── cmd/server/          # Application entrypoint
-├── internal/
-│   ├── config/          # Configuration management
-│   ├── database/        # Database operations & migrations
-│   ├── handlers/        # HTTP handlers (admin & public)
-│   ├── jellyfin/        # Jellyfin API client
-│   ├── middleware/      # Auth, rate limiting, sessions
-│   ├── models/          # Data models
-│   └── proxy/           # Stream & image proxy
-├── migrations/          # SQL migrations
-├── web/
-│   └── src/
-│       └── components/  # Svelte components
-└── docker-compose.yml   # Production compose
-```
-
-### Building
+This is a fork of `monxas/jellyfin-share-backend`. To rebase on new upstream changes:
 
 ```bash
-# Build production Docker image
-docker build -t jellyfin-share .
-
-# Build frontend only
-cd web && npm run build
+git remote add upstream https://github.com/monxas/jellyfin-share-backend.git
+git fetch upstream
+git rebase upstream/main
 ```
-
-## Security Considerations
-
-- **Jellyfin is never exposed** - All media requests are proxied through the backend
-- **HMAC-signed session cookies** - Password sessions use cryptographically signed tokens
-- **Bcrypt password hashing** - Share passwords are securely hashed
-- **Rate limiting** - Public endpoints are rate-limited to prevent abuse
-- **IP hashing** - Client IPs are hashed for privacy in audit logs
-- **Automatic session cleanup** - Stale sessions are automatically terminated
-
-## Companion Plugin
-
-For seamless integration, install the [Jellyfin Share Plugin](https://github.com/monxas/jellyfin-share-plugin) to create share links directly from the Jellyfin UI.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
-
-## Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request.
+MIT (same as upstream)
