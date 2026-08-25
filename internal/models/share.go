@@ -76,6 +76,24 @@ type CreateShareResponse struct {
 	MaxConcurrentViewers *int      `json:"maxConcurrentViewers,omitempty"`
 }
 
+type AudioTrack struct {
+	Index        int    `json:"index"`
+	Language     string `json:"language"`
+	DisplayTitle string `json:"displayTitle"`
+	Codec        string `json:"codec"`
+	Channels     int    `json:"channels"`
+	IsDefault    bool   `json:"isDefault"`
+}
+
+type SubtitleTrack struct {
+	Index        int    `json:"index"`
+	Language     string `json:"language"`
+	DisplayTitle string `json:"displayTitle"`
+	Codec        string `json:"codec"`
+	IsDefault    bool   `json:"isDefault"`
+	IsForced     bool   `json:"isForced"`
+}
+
 type SharePublicInfo struct {
 	Title                    string    `json:"title"`
 	Overview                 string    `json:"overview,omitempty"`
@@ -102,6 +120,8 @@ type SharePublicInfo struct {
 	Directors       []string          `json:"directors,omitempty"`
 	Actors          []ActorInfo       `json:"actors,omitempty"`
 	VideoQuality    *VideoQualityInfo `json:"videoQuality,omitempty"`
+	AudioTracks     []AudioTrack      `json:"audioTracks,omitempty"`
+	SubtitleTracks  []SubtitleTrack   `json:"subtitleTracks,omitempty"`
 }
 
 type ActorInfo struct {

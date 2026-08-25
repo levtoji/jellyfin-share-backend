@@ -117,13 +117,17 @@ type MediaSource struct {
 
 type MediaStream struct {
 	Type         string `json:"Type"`
+	Index        int    `json:"Index"`
 	Codec        string `json:"Codec,omitempty"`
+	Language     string `json:"Language,omitempty"`
 	Width        int    `json:"Width,omitempty"`
 	Height       int    `json:"Height,omitempty"`
 	BitRate      int    `json:"BitRate,omitempty"`
 	Channels     int    `json:"Channels,omitempty"`
 	SampleRate   int    `json:"SampleRate,omitempty"`
 	DisplayTitle string `json:"DisplayTitle,omitempty"`
+	IsDefault    bool   `json:"IsDefault,omitempty"`
+	IsForced     bool   `json:"IsForced,omitempty"`
 }
 
 type PlaybackInfo struct {

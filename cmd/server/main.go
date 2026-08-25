@@ -123,6 +123,7 @@ func main() {
 	// Serve static frontend
 	r.Get("/s/{token}", serveIndex)
 	r.Get("/s/{token}/*", serveIndex)
+	r.Get("/direct/{token}", publicHandler.StartPlayback)
 
 	// Admin UI
 	r.Get("/admin", serveIndex)

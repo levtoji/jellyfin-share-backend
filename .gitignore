@@ -30,3 +30,6 @@ web/dist/
 # Test coverage
 coverage.out
 coverage.html
+
+server/
+vendor/

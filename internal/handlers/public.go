@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -67,6 +68,19 @@ func (h *PublicHandler) GetShareInfo(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Failed to fetch Jellyfin item %s: %v", share.JellyfinItemID, err)
 	} else if item != nil {
 		h.enrichShareInfo(&info, item, token)
+
+		// Extract audio tracks - for Series, resolve first episode
+		if len(item.MediaSources) > 0 {
+			info.AudioTracks = extractAudioTracks(item.MediaSources[0])
+			info.SubtitleTracks = extractSubtitleTracks(item.MediaSources[0])
+		} else if share.ItemType == "Series" {
+			if tracks := h.resolveFirstEpisodeTracks(r.Context(), share.JellyfinItemID); len(tracks) > 0 {
+				info.AudioTracks = tracks
+			}
+			if tracks := h.resolveFirstEpisodeSubtitleTracks(r.Context(), share.JellyfinItemID); len(tracks) > 0 {
+				info.SubtitleTracks = tracks
+			}
+		}
 	}
 
 	writeJSON(w, http.StatusOK, info)
@@ -171,6 +185,72 @@ func getResolutionLabel(height int) string {
 	default:
 		return ""
 	}
+}
+
+func extractAudioTracks(ms jellyfin.MediaSource) []models.AudioTrack {
+	var tracks []models.AudioTrack
+	for _, stream := range ms.MediaStreams {
+		if stream.Type == "Audio" {
+			tracks = append(tracks, models.AudioTrack{
+				Index:        stream.Index,
+				Language:     stream.Language,
+				DisplayTitle: stream.DisplayTitle,
+				Codec:        stream.Codec,
+				Channels:     stream.Channels,
+				IsDefault:    stream.IsDefault,
+			})
+		}
+	}
+	return tracks
+}
+
+func extractSubtitleTracks(ms jellyfin.MediaSource) []models.SubtitleTrack {
+	var tracks []models.SubtitleTrack
+	for _, stream := range ms.MediaStreams {
+		if stream.Type == "Subtitle" {
+			tracks = append(tracks, models.SubtitleTrack{
+				Index:        stream.Index,
+				Language:     stream.Language,
+				DisplayTitle: stream.DisplayTitle,
+				Codec:        stream.Codec,
+				IsDefault:    stream.IsDefault,
+				IsForced:     stream.IsForced,
+			})
+		}
+	}
+	return tracks
+}
+
+func (h *PublicHandler) resolveFirstEpisodeTracks(ctx context.Context, seriesID string) []models.AudioTrack {
+	seasons, err := h.jf.GetSeriesSeasons(ctx, seriesID)
+	if err != nil || len(seasons) == 0 {
+		return nil
+	}
+	episodes, err := h.jf.GetSeasonEpisodes(ctx, seasons[0].ID)
+	if err != nil || len(episodes) == 0 {
+		return nil
+	}
+	item, err := h.jf.GetItem(ctx, episodes[0].ID)
+	if err != nil || item == nil || len(item.MediaSources) == 0 {
+		return nil
+	}
+	return extractAudioTracks(item.MediaSources[0])
+}
+
+func (h *PublicHandler) resolveFirstEpisodeSubtitleTracks(ctx context.Context, seriesID string) []models.SubtitleTrack {
+	seasons, err := h.jf.GetSeriesSeasons(ctx, seriesID)
+	if err != nil || len(seasons) == 0 {
+		return nil
+	}
+	episodes, err := h.jf.GetSeasonEpisodes(ctx, seasons[0].ID)
+	if err != nil || len(episodes) == 0 {
+		return nil
+	}
+	item, err := h.jf.GetItem(ctx, episodes[0].ID)
+	if err != nil || item == nil || len(item.MediaSources) == 0 {
+		return nil
+	}
+	return extractSubtitleTracks(item.MediaSources[0])
 }
 
 func (h *PublicHandler) ValidatePassword(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +386,25 @@ func (h *PublicHandler) StartPlayback(w http.ResponseWriter, r *http.Request) {
 	h.db.LogAuditEvent(r.Context(), database.AuditEventPlaybackStarted, &share.ID, &session.ID, nil, &ipHash, nil)
 
 	// Generate playback URL
-	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8"
+	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?VideoCodec=h264&AllowVideoStreamCopy=false&VideoBitrate=4000000&MaxWidth=1920&MaxHeight=1080&EnableTonemapping=true"
+
+	if r.URL.Path == "/direct/"+token {
+		// For Series, resolve the first episode so Jellyfin can stream it
+		if share.ItemType == "Series" {
+			seasons, err := h.jf.GetSeriesSeasons(r.Context(), share.JellyfinItemID)
+			if err == nil && len(seasons) > 0 {
+				episodes, err := h.jf.GetSeasonEpisodes(r.Context(), seasons[0].ID)
+				if err == nil && len(episodes) > 0 {
+					playbackURL = playbackURL + "&itemId=" + episodes[0].ID
+				}
+			}
+		}
+		if r.URL.RawQuery != "" {
+			playbackURL = playbackURL + "&" + r.URL.RawQuery
+		}
+		http.Redirect(w, r, playbackURL, http.StatusFound)
+		return
+	}
 
 	writeJSON(w, http.StatusOK, models.PlayResponse{
 		SessionID:   session.ID,
@@ -582,7 +680,7 @@ func (h *PublicHandler) StartEpisodePlayback(w http.ResponseWriter, r *http.Requ
 	})
 
 	// Generate playback URL for the specific episode
-	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + episodeID
+	playbackURL := h.cfg.PublicBaseURL + "/api/public/stream/" + session.ID.String() + "/master.m3u8?itemId=" + episodeID + "&VideoCodec=h264&AllowVideoStreamCopy=false&VideoBitrate=4000000&MaxWidth=1920&MaxHeight=1080&EnableTonemapping=true"
 
 	writeJSON(w, http.StatusOK, models.PlayResponse{
 		SessionID:   session.ID,
