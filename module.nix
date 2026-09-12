@@ -32,9 +32,14 @@ in {
     };
 
     databaseUrl = lib.mkOption {
-      type = lib.types.str;
+      type = lib.types.nullOr lib.types.str;
+      default = null;
       example = "postgres://user:pass@127.0.0.1:5432/watch?sslmode=disable";
-      description = "PostgreSQL connection string";
+      description = ''
+        PostgreSQL connection string. Leave unset (null) and provide
+        `JFSHARE_DB_DSN` via `environmentFile` instead if you don't want the
+        secret to end up in the Nix store / systemd unit file.
+      '';
     };
 
     jellyfinUrl = lib.mkOption {
@@ -44,13 +49,36 @@ in {
     };
 
     jellyfinApiKey = lib.mkOption {
-      type = lib.types.str;
-      description = "Jellyfin API key";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Jellyfin API key. Leave unset (null) and provide
+        `JFSHARE_JELLYFIN_API_KEY` via `environmentFile` instead if you don't
+        want the secret to end up in the Nix store / systemd unit file.
+      '';
     };
 
     backendApiKey = lib.mkOption {
-      type = lib.types.str;
-      description = "Backend API key for admin access";
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = ''
+        Backend API key for admin access. Leave unset (null) and provide
+        `JFSHARE_BACKEND_API_KEY` via `environmentFile` instead if you don't
+        want the secret to end up in the Nix store / systemd unit file.
+      '';
+    };
+
+    environmentFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Path to a systemd EnvironmentFile (KEY=VALUE per line) supplying any
+        of `JFSHARE_DB_DSN`, `JFSHARE_JELLYFIN_API_KEY` or
+        `JFSHARE_BACKEND_API_KEY`. Read at service-start time on the target
+        host, so the secret values never need to be passed as Nix option
+        values (avoids `builtins.readFile` at eval time and keeps secrets out
+        of the Nix store).
+      '';
     };
 
     publicBaseUrl = lib.mkOption {
@@ -79,6 +107,21 @@ in {
   };
 
   config = lib.mkIf cfg.enable {
+    assertions = [
+      {
+        assertion = cfg.databaseUrl != null || cfg.environmentFile != null;
+        message = "services.jellyfin-share: set either `databaseUrl` or provide JFSHARE_DB_DSN via `environmentFile`.";
+      }
+      {
+        assertion = cfg.jellyfinApiKey != null || cfg.environmentFile != null;
+        message = "services.jellyfin-share: set either `jellyfinApiKey` or provide JFSHARE_JELLYFIN_API_KEY via `environmentFile`.";
+      }
+      {
+        assertion = cfg.backendApiKey != null || cfg.environmentFile != null;
+        message = "services.jellyfin-share: set either `backendApiKey` or provide JFSHARE_BACKEND_API_KEY via `environmentFile`.";
+      }
+    ];
+
     systemd.services.jellyfin-share = {
       description = "Jellyfin Share Backend";
       after = [ "network.target" ] ++ lib.optionals cfg.setupPostgresql [ "postgresql.service" ];
@@ -99,9 +142,11 @@ in {
         ProtectHome = true;
         ReadWritePaths = [ "/var/lib/jellyfin-share" ];
         PrivateTmp = true;
+      } // lib.optionalAttrs (cfg.environmentFile != null) {
+        EnvironmentFile = cfg.environmentFile;
       };
 
-      environment = {
+      environment = lib.filterAttrs (_: v: v != null) {
         JFSHARE_PORT = toString cfg.port;
         JFSHARE_DB_DSN = cfg.databaseUrl;
         JFSHARE_JELLYFIN_BASE_URL = cfg.jellyfinUrl;
