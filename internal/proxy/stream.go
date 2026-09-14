@@ -99,11 +99,7 @@ func (p *StreamProxy) ServeStream(w http.ResponseWriter, r *http.Request) {
 func (p *StreamProxy) buildJellyfinStreamURL(itemID, path, query string) string {
 	baseURL := p.jf.BaseURL()
 
-	// Parse existing query and ensure api_key is set (don't duplicate)
 	params, _ := url.ParseQuery(query)
-	if params.Get("api_key") == "" {
-		params.Set("api_key", p.jf.APIKey())
-	}
 
 	// Handle different path types
 	if strings.HasSuffix(path, ".m3u8") {
@@ -140,6 +136,8 @@ func (p *StreamProxy) proxyRequest(w http.ResponseWriter, r *http.Request, targe
 		http.Error(w, "proxy error", http.StatusBadGateway)
 		return
 	}
+
+	req.Header.Set("Authorization", p.jf.AuthHeader())
 
 	// Copy relevant headers
 	if rangeHeader := r.Header.Get("Range"); rangeHeader != "" {
@@ -218,18 +216,19 @@ func (p *StreamProxy) ServeImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Add API key
-	imageURL += "?api_key=" + p.jf.APIKey()
-
 	// Add query params for sizing
+	params := url.Values{}
 	if maxWidth := r.URL.Query().Get("maxWidth"); maxWidth != "" {
-		imageURL += "&maxWidth=" + maxWidth
+		params.Set("maxWidth", maxWidth)
 	}
 	if maxHeight := r.URL.Query().Get("maxHeight"); maxHeight != "" {
-		imageURL += "&maxHeight=" + maxHeight
+		params.Set("maxHeight", maxHeight)
 	}
 	if quality := r.URL.Query().Get("quality"); quality != "" {
-		imageURL += "&quality=" + quality
+		params.Set("quality", quality)
+	}
+	if encoded := params.Encode(); encoded != "" {
+		imageURL += "?" + encoded
 	}
 
 	// Proxy with caching enabled
@@ -238,6 +237,7 @@ func (p *StreamProxy) ServeImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error", http.StatusInternalServerError)
 		return
 	}
+	req.Header.Set("Authorization", p.jf.AuthHeader())
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

@@ -154,7 +154,7 @@ func (c *Client) doRequest(ctx context.Context, method, path string, body io.Rea
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
-	req.Header.Set("X-Emby-Token", c.apiKey)
+	req.Header.Set("Authorization", c.AuthHeader())
 	req.Header.Set("Content-Type", "application/json")
 
 	return c.httpClient.Do(req)
@@ -226,7 +226,6 @@ func (c *Client) GetStreamURL(itemID string, mediaSourceID string, container str
 	params := url.Values{}
 	params.Set("Static", "true")
 	params.Set("mediaSourceId", mediaSourceID)
-	params.Set("api_key", c.apiKey)
 
 	return fmt.Sprintf("%s/Videos/%s/stream.%s?%s", c.baseURL, itemID, container, params.Encode())
 }
@@ -234,7 +233,6 @@ func (c *Client) GetStreamURL(itemID string, mediaSourceID string, container str
 func (c *Client) GetHLSStreamURL(itemID string, mediaSourceID string) string {
 	params := url.Values{}
 	params.Set("MediaSourceId", mediaSourceID)
-	params.Set("api_key", c.apiKey)
 	params.Set("DeviceId", "jfshare-backend")
 	params.Set("PlaySessionId", "jfshare-"+itemID)
 
@@ -243,9 +241,9 @@ func (c *Client) GetHLSStreamURL(itemID string, mediaSourceID string) string {
 
 func (c *Client) GetTranscodedStreamURL(transcodingPath string) string {
 	if strings.HasPrefix(transcodingPath, "/") {
-		return c.baseURL + transcodingPath + "&api_key=" + c.apiKey
+		return c.baseURL + transcodingPath
 	}
-	return c.baseURL + "/" + transcodingPath + "&api_key=" + c.apiKey
+	return c.baseURL + "/" + transcodingPath
 }
 
 func (c *Client) VerifyConnection(ctx context.Context) error {
@@ -268,6 +266,13 @@ func (c *Client) BaseURL() string {
 
 func (c *Client) APIKey() string {
 	return c.apiKey
+}
+
+// AuthHeader returns the Authorization header value for API-key
+// authentication. Jellyfin 12 dropped the legacy X-Emby-Token header and
+// ?api_key= query param in favor of this standard Authorization scheme.
+func (c *Client) AuthHeader() string {
+	return fmt.Sprintf(`MediaBrowser Token="%s"`, c.apiKey)
 }
 
 // TicksToSeconds converts Jellyfin runtime ticks to seconds

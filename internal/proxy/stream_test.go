@@ -30,9 +30,6 @@ func TestBuildJellyfinStreamURL_MasterM3u8(t *testing.T) {
 	if !strings.HasSuffix(parsed.Path, "/Videos/item-123/master.m3u8") {
 		t.Errorf("unexpected path: %s", parsed.Path)
 	}
-	if params.Get("api_key") != "test-api-key" {
-		t.Errorf("expected api_key=test-api-key, got %s", params.Get("api_key"))
-	}
 	if params.Get("MediaSourceId") != "item-123" {
 		t.Errorf("expected MediaSourceId=item-123, got %s", params.Get("MediaSourceId"))
 	}
@@ -169,22 +166,6 @@ func TestBuildJellyfinStreamURL_GenericStream(t *testing.T) {
 	}
 	if params.Get("mediaSourceId") != "item-123" {
 		t.Errorf("expected mediaSourceId=item-123, got %s", params.Get("mediaSourceId"))
-	}
-}
-
-func TestBuildJellyfinStreamURL_NoDuplicateApiKey(t *testing.T) {
-	proxy := newTestStreamProxy("http://jellyfin:8096", "test-api-key")
-
-	result := proxy.buildJellyfinStreamURL("item-123", "master.m3u8", "api_key=already-set")
-
-	parsed, err := url.Parse(result)
-	if err != nil {
-		t.Fatalf("failed to parse URL: %v", err)
-	}
-
-	params := parsed.Query()
-	if params.Get("api_key") != "already-set" {
-		t.Errorf("expected api_key=already-set (not overwritten), got %s", params.Get("api_key"))
 	}
 }
 
